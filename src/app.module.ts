@@ -35,6 +35,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
       { name: Emission.name, schema: EmissionSchema },
       { name: User.name, schema: UserSchema },
     ]),
+
     RedisModule.forRootAsync({
       useFactory: () => ({
         type: 'single',
@@ -69,7 +70,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
     },
     {
       provide: APP_GUARD,
-      useClass: JwtAuthGuard, //น Global Guard
+      useClass: JwtAuthGuard, // Global Guard
     },
   ],
 })

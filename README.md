@@ -1,99 +1,158 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# NestJS + Docker + Heroku Deployment Guide
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+## 📌 Prerequisites
+Before proceeding, make sure you have the following installed:
+- [Node.js (LTS)](https://nodejs.org/)
+- [Docker](https://www.docker.com/get-started)
+- [Heroku CLI](https://devcenter.heroku.com/articles/heroku-cli)
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://coveralls.io/github/nestjs/nest?branch=master" target="_blank"><img src="https://coveralls.io/repos/github/nestjs/nest/badge.svg?branch=master#9" alt="Coverage" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## 📦 Install NestJS
+1. Install NestJS CLI globally:
+   ```sh
+   npm install -g @nestjs/cli
+   ```
+2. Create a new NestJS project:
+   ```sh
+   nest new my-nest-app
+   ```
+3. Navigate to the project directory:
+   ```sh
+   cd my-nest-app
+   ```
+4. Install dependencies:
+   ```sh
+   npm install
+   ```
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+---
 
-## Project setup
+## 🐳 Setup Docker for NestJS
+1. Create a `Dockerfile` in the root directory:
+   ```dockerfile
+   # Use Node.js as base image
+   FROM node:18-alpine
 
-```bash
-$ pnpm install
+   # Set working directory
+   WORKDIR /app
+
+   # Copy package.json and install dependencies
+   COPY package*.json ./
+   RUN npm install
+
+   # Copy application code
+   COPY . .
+
+   # Build NestJS app
+   RUN npm run build
+
+   # Expose port
+   EXPOSE 3000
+
+   # Start the application
+   CMD ["npm", "run", "start"]
+   ```
+2. Create a `.dockerignore` file to exclude unnecessary files:
+   ```
+   node_modules
+   dist
+   .git
+   .env
+   ```
+3. Build and run the Docker container:
+   ```sh
+   docker build -t my-nest-app .
+   docker run -p 3000:3000 my-nest-app
+   ```
+
+Now, the NestJS app should be running inside a Docker container at `http://localhost:3000` 🚀
+
+---
+
+## ☁️ Deploy NestJS to Heroku using Docker
+### **1. Login to Heroku CLI**
+```sh
+heroku login
 ```
 
-## Compile and run the project
-
-```bash
-# development
-$ pnpm run start
-
-# watch mode
-$ pnpm run start:dev
-
-# production mode
-$ pnpm run start:prod
+### **2. Create a new Heroku app**
+```sh
+heroku create my-nest-app
 ```
 
-## Run tests
-
-```bash
-# unit tests
-$ pnpm run test
-
-# e2e tests
-$ pnpm run test:e2e
-
-# test coverage
-$ pnpm run test:cov
+### **3. Add Heroku Container Registry**
+```sh
+heroku container:login
 ```
 
-## Deployment
+### **4. Create `heroku.yml` for Deployment**
+In the root directory, create a `heroku.yml` file:
+```yaml
+build:
+  docker:
+    web: Dockerfile
+run:
+  web: npm run start
+```  
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+### **5. Push and Release to Heroku**
+1. Build and push the Docker image:
+   ```sh
+   heroku container:push web -a my-nest-app
+   ```
+2. Release the app:
+   ```sh
+   heroku container:release web -a my-nest-app
+   ```
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ pnpm install -g mau
-$ mau deploy
+### **6. Open the deployed app**
+```sh
+heroku open
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+🚀 Your NestJS app is now deployed on Heroku using Docker! 🎉
 
-## Resources
+---
 
-Check out a few resources that may come in handy when working with NestJS:
+## 🔄 Update & Redeploy
+Whenever you make changes, you can redeploy using:
+```sh
+heroku container:push web -a my-nest-app
+heroku container:release web -a my-nest-app
+```
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+---
 
-## Support
+## 🔧 Environment Variables
+To configure your NestJS application, you need to set up the following environment variables in your `.env` file:
+```
+MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/dbname
+REDIS_URL=redis://default:password@redis-host:6379
+JWT_SECRET=your_jwt_secret_key
+NODE_ENV=production  # or development
+PORT=3000
+```
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+In Heroku, set them using:
+```sh
+heroku config:set MONGO_URI=mongodb+srv://your-uri
+heroku config:set REDIS_URL=redis://your-redis-url
+heroku config:set JWT_SECRET=your_jwt_secret
+heroku config:set NODE_ENV=production
+heroku config:set PORT=3000
+```
 
-## Stay in touch
+---
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+## 🛠 Troubleshooting
+- If the app doesn't start, check logs:
+  ```sh
+  heroku logs --tail -a my-nest-app
+  ```
+- Make sure `PORT=3000` is set in the code, as Heroku dynamically assigns ports:
+  ```typescript
+  const port = process.env.PORT || 3000;
+  await app.listen(port);
+  ```
 
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
