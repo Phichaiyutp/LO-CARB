@@ -1,7 +1,6 @@
 build:
   docker:
     web: Dockerfile
-  config:
-    NODE_ENV=development
+
 run:
-  web: npm run start:prod
+  web: node dist/main
