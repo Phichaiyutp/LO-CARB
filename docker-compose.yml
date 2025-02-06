@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  # MongoDB Service
+  mongo:
+    image: mongo:latest
+    container_name: mongo_db
+    restart: always
+    ports:
+      - '9647:27017'
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - local_network
+  # Redis Service
+  redis:
+    image: redis:latest
+    container_name: redis_cache
+    restart: always
+    ports:
+      - '3542:6379'
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    networks:
+      - local_network
+
+  # NestJS Application Service
+  nestjs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nest_api
+    restart: always
+    ports:
+      - '5483:3000'
+    depends_on:
+      - mongo
+      - redis
+    environment:
+      NODE_ENV: production
+    networks:
+      - local_network
+      
+networks:
+  local_network:
+
+volumes:
+  mongo_data:
+  redis_data:
