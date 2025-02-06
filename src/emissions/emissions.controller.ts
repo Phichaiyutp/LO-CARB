@@ -27,19 +27,46 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
-import { AuthGuard } from '@nestjs/passport';
-import { Roles } from '../auth/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
+import Redis from 'ioredis';
+import { InjectRedis } from '@nestjs-modules/ioredis';
+import { RolesGuard } from 'src/auth/roles.guard';
+import { Roles } from 'src/auth/roles.decorator';
+import { Role } from 'src/auth/enums/role.enum';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 @ApiTags('Emissions')
 @ApiBearerAuth('JWT-auth')
 @Controller('emissions')
-@UseGuards(AuthGuard('jwt'), RolesGuard, ThrottlerGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, ThrottlerGuard)
 export class EmissionsController {
-  constructor(private readonly emissionsService: EmissionsService) {}
+  constructor(
+    private readonly emissionsService: EmissionsService,
+    @InjectRedis() private readonly redis: Redis,
+  ) {}
+
+  async deleteByPrefixKeys(prefix: string): Promise<void> {
+    let cursor = '0';
+
+    do {
+      const result = await this.redis.scan(
+        cursor,
+        'MATCH',
+        `${prefix}*`,
+        'COUNT',
+        100,
+      );
+      cursor = result[0];
+      const keys = result[1];
+
+      if (keys.length > 0) {
+        await this.redis.del(...keys);
+        console.log(`Deleted ${keys.length} keys`);
+      }
+    } while (cursor !== '0');
+  }
 
   @Get()
-  @Roles('user', 'admin')
+  @Roles(Role.Admin,Role.User)
   @ApiOperation({
     summary:
       'Retrieve greenhouse gas emissions data for a speciﬁc country and year.',
@@ -90,7 +117,7 @@ export class EmissionsController {
   }
 
   @Get('sector')
-  @Roles('user', 'admin')
+  @Roles(Role.Admin,Role.User)
   @ApiOperation({
     summary:
       'Retrieve greenhouse gas emissions by sector for a country and year.',
@@ -116,18 +143,20 @@ export class EmissionsController {
   }
 
   @Get('trend')
-  @Roles('user', 'admin')
+  @Roles(Role.Admin,Role.User)
   @ApiOperation({
     summary:
       'Retrieve greenhouse gas emissions trends over time for a country.',
   })
   @ApiResponse({ status: 200, description: 'Successful response' })
   async getEmissionTrends(@Query('country') country: string) {
-    return await this.emissionsService.getTrendsBySector(country);
+    const result = await this.emissionsService.getTrendsBySector(country);
+    await this.redis.set(`trend:${country}`, JSON.stringify(result));
+    return result;
   }
 
   @Get('filter')
-  @Roles('user', 'admin')
+  @Roles(Role.Admin,Role.User)
   @ApiOperation({
     summary: 'Filter emissions by speciﬁc gases (e.g., CO₂, CH₄, N₂O).',
   })
@@ -168,7 +197,7 @@ export class EmissionsController {
   }
 
   @Get('summary')
-  @Roles('user', 'admin')
+  @Roles(Role.Admin,Role.User)
   @ApiOperation({
     summary:
       ' Retrieve total emissions summary for a year (grouped by country and sector).',
@@ -194,7 +223,7 @@ export class EmissionsController {
   }
 
   @Get(':id')
-  @Roles('user', 'admin')
+  @Roles(Role.Admin,Role.User)
   @ApiOperation({ summary: 'Retrieve an emission record by ID' })
   @ApiParam({ name: 'id', required: true, example: '65b1234abcde56789f012345' })
   @ApiResponse({
@@ -210,7 +239,7 @@ export class EmissionsController {
     return emission;
   }
   @Post()
-  @Roles('admin')
+  @Roles(Role.Admin)
   @ApiOperation({ summary: 'Create new greenhouse gas emissions records.' })
   @ApiResponse({
     status: 201,
@@ -221,7 +250,7 @@ export class EmissionsController {
   }
 
   @Post('bulk')
-  @Roles('admin')
+  @Roles(Role.Admin)
   @ApiOperation({ summary: 'Add multiple greenhouse gas emission records' })
   @ApiResponse({
     status: 201,
@@ -229,11 +258,12 @@ export class EmissionsController {
   })
   @ApiBody({ type: [CreateEmissionDto] })
   async createEmissions(@Body() body: CreateEmissionDto[]) {
+    this.deleteByPrefixKeys(`trend:`);
     return this.emissionsService.createMany(body);
   }
 
   @Post('upload-csv')
-  @Roles('admin')
+  @Roles(Role.Admin)
   @Throttle({ default: { limit: 2, ttl: 60 } })
   @ApiOperation({ summary: 'Upload CSV file to insert emissions data' })
   @ApiConsumes('multipart/form-data')
@@ -259,7 +289,7 @@ export class EmissionsController {
         // Process CSV in the background
         this.emissionsService.processCSV(file.buffer);
       });
-
+      this.deleteByPrefixKeys(`trend:`);
       return { message: 'File upload started' }; // Immediate response
     } catch (error) {
       console.error('Error processing CSV:', error);
@@ -268,7 +298,7 @@ export class EmissionsController {
   }
 
   @Patch(':id')
-  @Roles('admin')
+  @Roles(Role.Admin)
   @ApiOperation({ summary: 'Update an existing emission record' })
   @ApiResponse({
     status: 200,
@@ -295,11 +325,12 @@ export class EmissionsController {
     if (!result) {
       throw new NotFoundException(`Emission record with ID ${id} not found`);
     }
+    this.deleteByPrefixKeys(`trend:`);
     return result;
   }
 
   @Delete(':id')
-  @Roles('admin')
+  @Roles(Role.Admin)
   @ApiOperation({ summary: 'Delete an emissions record with soft deletion.' })
   @ApiResponse({
     status: 200,
@@ -310,6 +341,7 @@ export class EmissionsController {
     if (!result) {
       throw new NotFoundException(`Emission record with ID ${id} not found`);
     }
+    this.deleteByPrefixKeys(`trend:`);
     return result;
   }
 }

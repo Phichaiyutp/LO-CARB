@@ -6,17 +6,18 @@ import { EmissionsController } from './emissions.controller';
 import { EmissionsRepository } from './emissions.repository';
 import { CountriesModule } from 'src/countries/countries.module';
 import { SectorModule } from 'src/sectors/sector.module';
-import { CacheModule } from '@nestjs/cache-manager';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Emission.name, schema: EmissionSchema }]),
     CountriesModule,
     SectorModule,
-    CacheModule.register(),
   ],
   controllers: [EmissionsController],
-  providers: [EmissionsService, EmissionsRepository],
+  providers: [
+    EmissionsService,
+    EmissionsRepository,
+  ],
   exports: [EmissionsRepository],
 })
 export class EmissionsModule {}

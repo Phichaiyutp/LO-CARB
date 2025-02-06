@@ -1,7 +1,5 @@
 import { Module } from '@nestjs/common';
-import { CacheModule } from '@nestjs/cache-manager';
-import Keyv from 'keyv';
-import { CacheableMemory, createKeyv } from 'cacheable';
+import { RedisModule } from '@nestjs-modules/ioredis';
 import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { MulterModule } from '@nestjs/platform-express';
@@ -11,12 +9,12 @@ import { EmissionsModule } from './emissions/emissions.module';
 import { Emission, EmissionSchema } from './emissions/emissions.schema';
 import { SectorModule } from './sectors/sector.module';
 import { Sector, SectorSchema } from './sectors/sectors.schema';
-import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module';
-import { UsersModule } from './users/users.module';
-import { User, UserSchema } from './users/users.schema';
-import KeyvRedis from '@keyv/redis';
-
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { UserModule } from './user/user.module';
+import { User, UserSchema } from './user/schemas/user.schema';
+import { JwtAuthGuard } from './auth/jwt-auth.guard';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -37,22 +35,15 @@ import KeyvRedis from '@keyv/redis';
       { name: Emission.name, schema: EmissionSchema },
       { name: User.name, schema: UserSchema },
     ]),
-
-    CacheModule.registerAsync({
-      useFactory: async () => {
-        return {
-          stores: [
-            new Keyv({
-              store: new CacheableMemory({ ttl: 60000, lruSize: 5000 }),
-            }),
-            new Keyv({
-              store: new KeyvRedis(process.env.REDIS_TLS_URL ?? process.env.REDIS_URL ?? 'redis://localhost:6379'),
-            }),
-          ],
-        };
-      },
+    RedisModule.forRootAsync({
+      useFactory: () => ({
+        type: 'single',
+        url:
+          process.env.REDIS_TLS_URL ??
+          process.env.REDIS_URL ??
+          'redis://localhost:6379',
+      }),
     }),
-    
 
     ThrottlerModule.forRoot([
       {
@@ -69,7 +60,17 @@ import KeyvRedis from '@keyv/redis';
     CountriesModule,
     EmissionsModule,
     AuthModule,
-    UsersModule,
+    UserModule,
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard, // Global rate limiter
+    },
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard, //น Global Guard
+    },
   ],
 })
 export class AppModule {}

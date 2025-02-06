@@ -1,48 +1,44 @@
-import {
-  Injectable,
-  ConflictException,
-  UnauthorizedException,
-} from '@nestjs/common';
-import { UsersService } from '../users/users.service';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { UserService } from '../user/user.service';
 import * as bcrypt from 'bcrypt';
-import { SignupDto } from './dto/signup.dto';
 
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly usersService: UsersService,
+    private readonly userService: UserService,
     private readonly jwtService: JwtService,
   ) {}
 
-  async validateUser(username: string, password: string): Promise<any> {
-    const user = await this.usersService.findOne(username);
+  async validateUser(email: string, password: string) {
+    const user = await this.userService.findPasswordByEmail(email);
 
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
-    const isPasswordValid = await bcrypt.compare(password, user.password);
 
-    if (!isPasswordValid) {
+    if (!user.password) {
+      throw new UnauthorizedException('User password is missing');
+    }
+
+    // Ensure both password and hashed password are provided
+    if (!password || !user.password) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    return { username: user.username, sub: user._id, role: user.role };
+    // Compare hashed password
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    return user;
   }
 
   async login(user: any) {
+    const payload = { sub: user._id, email: user.email, roles: user.roles };
     return {
-      access_token: this.jwtService.sign(user),
+      accessToken: this.jwtService.sign(payload),
     };
-  }
-
-  async signup(userData: SignupDto) {
-    const existingUser = await this.usersService.findOne(userData.username);
-    if (existingUser) throw new ConflictException('Username already taken');
-
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(userData.password, salt);
-
-    return this.usersService.create({ ...userData, password: hashedPassword });
   }
 }

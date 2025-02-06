@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -10,26 +9,10 @@ import { Types } from 'mongoose';
 import { Emission } from './emissions.schema';
 import * as csvParser from 'csv-parser';
 import { Readable } from 'stream';
-import { Cache } from 'cache-manager';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
 
 @Injectable()
 export class EmissionsService {
-  constructor(
-    private readonly emissionsRepository: EmissionsRepository,
-    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache
-  ) {}
-
-  async getCache<T = unknown>(key: string): Promise<T | null> {
-    return this.cacheManager.get<T>(key);
-  }
-  async setCache(key: string, value: any, seconds = 600): Promise<void> {
-    await this.cacheManager.set(key, value, seconds);
-  }
-
-  async delCache(key: string): Promise<void> {
-    await this.cacheManager.del(key);
-  }
+  constructor(private readonly emissionsRepository: EmissionsRepository) {}
 
   async findById(id: string) {
     return this.emissionsRepository.findById(id);
@@ -65,16 +48,7 @@ export class EmissionsService {
   }
 
   async getTrendsBySector(countryAlpha3: string) {
-    const cacheKey = `trends:${countryAlpha3}`;
-    const cachedData = await this.getCache(cacheKey);
-    if (cachedData) {
-      return cachedData;
-    }
-
-    const trends =
-      await this.emissionsRepository.getTrendsBySector(countryAlpha3);
-    await this.setCache(cacheKey, trends, 600);
-    return trends;
+    return await this.emissionsRepository.getTrendsBySector(countryAlpha3);
   }
 
   async filterByGas(
@@ -96,7 +70,6 @@ export class EmissionsService {
       );
     }
     const result = this.emissionsRepository.create(data);
-    await this.delCache(`trends:${data.countryAlpha3}`);
     return result;
   }
 
@@ -114,7 +87,6 @@ export class EmissionsService {
           );
           continue;
         }
-        await this.delCache(`trends:${entry.countryAlpha3}`);
         validatedData.push({
           countryId: country._id as Types.ObjectId,
           sectorId: sector._id as Types.ObjectId,
