@@ -255,8 +255,12 @@ export class EmissionsController {
       throw new BadRequestException('No file uploaded');
     }
     try {
-      const emissions = await this.emissionsService.processCSV(file.buffer);
-      return emissions;
+      setImmediate(() => {
+        // Process CSV in the background
+        this.emissionsService.processCSV(file.buffer);
+      });
+
+      return { message: 'File upload started' }; // Immediate response
     } catch (error) {
       console.error('Error processing CSV:', error);
       throw new BadRequestException(`Error processing file: ${error.message}`);
