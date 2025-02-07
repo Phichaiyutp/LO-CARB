@@ -59,6 +59,7 @@ Before proceeding, make sure you have the following installed:
    dist
    .git
    .env
+   .env.*
    ```
 3. Build and run the Docker container:
    ```sh
@@ -125,12 +126,29 @@ heroku container:release web -a my-nest-app
 ---
 
 ## 🔧 Environment Variables
-To configure your NestJS application, you need to set up the following environment variables in your `.env` file:
+To configure your NestJS application, you need to set up the following environment variables in your `.env`
+
+🌍 General Configuration (.env)
+file:
+```
+NODE_ENV=production  # or development
+```
+
+🛠 Development Configuration (.env.development)
+file:
+```
+MONGO_URI=mongodb://localhost:27017/dbname
+REDIS_URL=redis://default:password@redis-host:6379
+JWT_SECRET=your_jwt_secret_key
+PORT=3000
+```
+
+🚀 Production Configuration (.env.production)
+file:
 ```
 MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/dbname
 REDIS_URL=redis://default:password@redis-host:6379
 JWT_SECRET=your_jwt_secret_key
-NODE_ENV=production  # or development
 PORT=3000
 ```
 
