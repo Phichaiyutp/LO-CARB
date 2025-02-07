@@ -22,6 +22,12 @@ export class Sector {
 
   @Prop({ default: false })
   deleted?: boolean //Seft delete
+
+  @Prop({ type: Date })
+  createdAt?: Date;
+
+  @Prop({ type: Date })
+  updatedAt?: Date;
 }
 
 export const SectorSchema = SchemaFactory.createForClass(Sector);

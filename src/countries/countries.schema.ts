@@ -13,6 +13,12 @@ export class Country {
 
   @Prop({default: false })
   deleted?: boolean //Seft delete
+
+  @Prop({ type: Date })
+  createdAt?: Date;
+
+  @Prop({ type: Date })
+  updatedAt?: Date;
 }
 
 export const CountrySchema = SchemaFactory.createForClass(Country);

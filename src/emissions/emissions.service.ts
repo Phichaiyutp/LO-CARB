@@ -9,25 +9,33 @@ import { Types } from 'mongoose';
 import { Emission } from './emissions.schema';
 import * as csvParser from 'csv-parser';
 import { Readable } from 'stream';
+import { plainToInstance } from 'class-transformer';
+import {
+  PaginatedEmissionResponseDto,
+  EmissionResponseDto,
+  EmissionBySectorResponseDto,
+  PaginatedEmissionBySummaryResponseDto,
+  EmissionTrendDataResponseDto,
+  PaginatedEmissionGasResponseDto,
+} from './dto/emission-response.dto';
 
 @Injectable()
 export class EmissionsService {
   constructor(private readonly emissionsRepository: EmissionsRepository) {}
 
-  async findById(id: string) {
-    return this.emissionsRepository.findById(id);
+  async validateCountry(countryAlpha3: string) {
+    return this.emissionsRepository.findCountryByAlpha3(countryAlpha3) ?? null;
   }
 
-  async findAll(limit?: number, page?: number) {
-    return this.emissionsRepository.findAll(limit, page);
+  async validateSector(seriesCode: string) {
+    return this.emissionsRepository.findSectorBySeriesCode(seriesCode) ?? null;
   }
-
   async findByCountryAndYear(
     countryAlpha3: string,
     year: number,
     limit?: number,
     page?: number,
-  ) {
+  ): Promise<PaginatedEmissionResponseDto> {
     const country = await this.validateCountry(countryAlpha3);
     if (!country) {
       throw new NotFoundException(
@@ -35,7 +43,7 @@ export class EmissionsService {
       );
     }
 
-    return this.emissionsRepository.findByCountryAndYear(
+    return await this.emissionsRepository.findByCountryAndYear(
       country._id as Types.ObjectId,
       year,
       limit,
@@ -43,11 +51,41 @@ export class EmissionsService {
     );
   }
 
-  async findBySector(countryAlpha3?: string, year?: number) {
+  async findAll(
+    limit?: number,
+    page?: number,
+  ): Promise<PaginatedEmissionResponseDto> {
+    const result = await this.emissionsRepository.findAll(limit, page);
+    return {
+      ts: result.ts,
+      total: result.total,
+      limit: result.limit,
+      page: result.page,
+      totalPages: result.totalPages,
+      data: plainToInstance(EmissionResponseDto, result.data, {
+        excludeExtraneousValues: true,
+      }),
+    };
+  }
+
+  async findById(id: string): Promise<EmissionResponseDto> {
+    const emission = await this.emissionsRepository.findById(id);
+    if (!emission) {
+      throw new NotFoundException(`Emission record with ID '${id}' not found.`);
+    }
+    return plainToInstance(EmissionResponseDto, emission, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  async findBySector(
+    countryAlpha3?: string,
+    year?: number,
+  ): Promise<EmissionBySectorResponseDto> {
     return this.emissionsRepository.findBySector(countryAlpha3, year);
   }
 
-  async getTrendsBySector(countryAlpha3: string) {
+  async getTrendsBySector(countryAlpha3: string) :Promise<EmissionTrendDataResponseDto>  {
     return await this.emissionsRepository.getTrendsBySector(countryAlpha3);
   }
 
@@ -56,24 +94,31 @@ export class EmissionsService {
     year?: number,
     limit?: number,
     page?: number,
-  ) {
+  ):Promise<PaginatedEmissionGasResponseDto>  {
     return this.emissionsRepository.filterByGas(gasType, year, limit, page);
   }
-  async getEmissionsSummary(year: number) {
-    return this.emissionsRepository.getEmissionsSummary(year);
+
+  async getEmissionsSummary(
+    year: number,
+    limit?: number,
+    page?: number,
+  ): Promise<PaginatedEmissionBySummaryResponseDto> {
+    return this.emissionsRepository.getEmissionsSummary(year, limit, page);
   }
 
-  async create(data: CreateEmissionDto) {
+  async create(data: CreateEmissionDto): Promise<EmissionResponseDto> {
     if (!data.countryAlpha3 || !data.sectorSeriesCode || !data.year) {
       throw new BadRequestException(
         'Missing required fields: countryAlpha3, sectorSeriesCode, year',
       );
     }
-    const result = this.emissionsRepository.create(data);
-    return result;
+    const emission = await this.emissionsRepository.create(data);
+    return plainToInstance(EmissionResponseDto, emission, {
+      excludeExtraneousValues: true,
+    });
   }
 
-  async createMany(data: CreateEmissionDto[]): Promise<Emission[]> {
+  async createMany(data: CreateEmissionDto[]): Promise<EmissionResponseDto[]> {
     const validatedData: Emission[] = [];
 
     for (const entry of data) {
@@ -87,12 +132,15 @@ export class EmissionsService {
           );
           continue;
         }
-        validatedData.push({
-          countryId: country._id as Types.ObjectId,
-          sectorId: sector._id as Types.ObjectId,
-          year: entry.year,
-          amount: entry.amount,
-        } as Emission);
+
+        validatedData.push(
+          plainToInstance(Emission, {
+            countryId: country._id as Types.ObjectId,
+            sectorId: sector._id as Types.ObjectId,
+            year: entry.year,
+            amount: entry.amount,
+          }),
+        );
       } catch (error) {
         console.error(
           `Error validating entry: ${JSON.stringify(entry)}`,
@@ -105,17 +153,10 @@ export class EmissionsService {
       throw new BadRequestException('No valid data found for insertion.');
     }
 
-    const results = this.emissionsRepository.createMany(validatedData);
-
-    return results;
-  }
-
-  async validateCountry(countryAlpha3: string) {
-    return this.emissionsRepository.findCountryByAlpha3(countryAlpha3) ?? null;
-  }
-
-  async validateSector(seriesCode: string) {
-    return this.emissionsRepository.findSectorBySeriesCode(seriesCode) ?? null;
+    const results = await this.emissionsRepository.createMany(validatedData);
+    return plainToInstance(EmissionResponseDto, results, {
+      excludeExtraneousValues: true,
+    });
   }
 
   async processCSV(fileBuffer: Buffer): Promise<Emission[]> {
@@ -223,27 +264,24 @@ export class EmissionsService {
     });
   }
 
-  //Soft delete emission record
-  async softDelete(id: string) {
+  async update(
+    id: string,
+    data: Partial<CreateEmissionDto>,
+  ): Promise<EmissionResponseDto> {
+    const updatedEmission = await this.emissionsRepository.update(id, data);
+    if (!updatedEmission) {
+      throw new NotFoundException(`Emission record with ID '${id}' not found.`);
+    }
+    return plainToInstance(EmissionResponseDto, updatedEmission, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  async softDelete(id: string): Promise<{ message: string }> {
     const deletedEmission = await this.emissionsRepository.softDelete(id);
     if (!deletedEmission) {
       throw new NotFoundException(`Emission record with ID '${id}' not found.`);
     }
     return { message: `Emission record ${id} successfully soft deleted.` };
-  }
-
-  //Restore soft-deleted emission record
-  async restore(id: string) {
-    const restoredEmission = await this.emissionsRepository.restore(id);
-    if (!restoredEmission) {
-      throw new NotFoundException(
-        `Emission record with ID '${id}' not found or not deleted.`,
-      );
-    }
-    return { message: `Emission record ${id} successfully restored.` };
-  }
-
-  async update(id: string, data: Partial<CreateEmissionDto>) {
-    return this.emissionsRepository.update(id, data);
   }
 }

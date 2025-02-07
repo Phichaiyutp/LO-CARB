@@ -5,7 +5,7 @@ import { Role } from 'src/auth/enums/role.enum';
 
 export type UserDocument = User & Document;
 
-@Schema()
+@Schema({ timestamps: true })
 export class User {
   @Prop({ required: true, unique: true })
   email: string;
@@ -21,6 +21,12 @@ export class User {
 
   @Prop({ type: [String], enum: Object.values(Role), default: [Role.User] })
   roles: Role[];
+
+  @Prop({ type: Date })
+  createdAt?: Date;
+
+  @Prop({ type: Date })
+  updatedAt?: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

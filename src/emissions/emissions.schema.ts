@@ -6,19 +6,25 @@ export type EmissionDocument = Emission & Document;
 @Schema({ timestamps: true })
 export class Emission {
   @Prop({ type: Types.ObjectId, ref: 'Country', required: true })
-  countryId: Types.ObjectId; //Links to `countries` collection
+  countryId: Types.ObjectId;
 
   @Prop({ type: Types.ObjectId, ref: 'Sector', required: true })
-  sectorId: Types.ObjectId; //Links to `sectors` collection
+  sectorId: Types.ObjectId;
 
   @Prop({ required: true, min: 1900, max: 2100 })
-  year: number; //Year of the emission record
+  year: number;
 
   @Prop({ required: false, default: 0 })
-  amount?: number; //Quantity of emissions (kt CO₂ equivalent)
+  amount?: number;
 
-  @Prop({default: false })
-  deleted?: boolean //Seft delete
+  @Prop({ default: false })
+  deleted?: boolean;
+
+  @Prop({ type: Date })
+  createdAt?: Date;
+
+  @Prop({ type: Date })
+  updatedAt?: Date;
 }
 
 export const EmissionSchema = SchemaFactory.createForClass(Emission);

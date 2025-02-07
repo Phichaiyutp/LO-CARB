@@ -1,15 +1,36 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Expose } from 'class-transformer';
+import { IsString, IsOptional } from 'class-validator';
 
 export class CreateSectorDto {
-  @ApiProperty({
-    description: 'Full name of the emission series (e.g., "CO₂ emissions from buildings")',
-    example: 'CO₂ emissions from buildings',
-  })
-  seriesName: string;
+  @ApiProperty({ example: 'Energy', required: false })
+  @Expose()
+  @IsOptional()
+  @IsString()
+  industry?: string;
+
+  @ApiProperty({ example: 'CO₂', required: false })
+  @Expose()
+  @IsOptional()
+  @IsString()
+  gasType?: string;
+
+  @ApiProperty({ example: '% change from 1990', required: false })
+  @Expose()
+  @IsOptional()
+  @IsString()
+  unit?: string;
 
   @ApiProperty({
-    description: 'World Bank Series Code (e.g., "EN.CO2.BLDG.ZS")',
-    example: 'EN.CO2.BLDG.ZS',
+    example: 'Total greenhouse gas emissions (% change from 1990)',
+    required: true,
   })
+  @Expose()
+  @IsString()
+  seriesName: string;
+
+  @ApiProperty({ example: 'EN.ATM.GHGT.ZG', required: true })
+  @Expose()
+  @IsString()
   seriesCode: string;
 }

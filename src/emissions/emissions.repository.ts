@@ -12,6 +12,23 @@ import { CreateEmissionDto } from './dto/create-emissions.dto';
 import { Country, CountryDocument } from 'src/countries/countries.schema';
 import { Sector, SectorDocument } from 'src/sectors/sectors.schema';
 import { gasTypeMapping } from './constants';
+import { plainToInstance } from 'class-transformer';
+import {
+  EmissionBySectorDataDto,
+  EmissionBySectorResponseDto,
+  EmissionBySummaryDataDto,
+  EmissionGasRecordDto,
+  EmissionResponseDto,
+  EmissionTrendDataResponseDto,
+  PaginatedEmissionBySummaryResponseDto,
+  PaginatedEmissionGasResponseDto,
+  PaginatedEmissionResponseDto,
+} from './dto/emission-response.dto';
+import {
+  EmissionBySector,
+  EmissionSummary,
+} from './interface/emission-documents.interface';
+import { CountryResponseDto } from 'src/countries/dto/country-response.dto';
 
 @Injectable()
 export class EmissionsRepository {
@@ -70,30 +87,26 @@ export class EmissionsRepository {
       throw new BadRequestException('Invalid data format or empty array.');
     }
 
-    const bulkKeys = data.map((entry) => ({
-      countryId: entry.countryId,
-      sectorId: entry.sectorId,
-      year: entry.year,
-    }));
-
     const existingRecords = await this.emissionModel
       .find({
-        $or: bulkKeys,
-        deleted: false,
+        $or: data.map(({ countryId, sectorId, year }) => ({
+          countryId,
+          sectorId,
+          year,
+          deleted: false,
+        })),
       })
-      .select('countryId sectorId year');
+      .select('_id countryId sectorId year');
 
     const existingSet = new Set(
       existingRecords.map(
-        (record) =>
-          `${record.countryId.toString()}-${record.sectorId.toString()}-${record.year}`,
+        ({ countryId, sectorId, year }) => `${countryId}-${sectorId}-${year}`,
       ),
     );
 
-    // Filter out emissions that already exist
-    const newEntries = data.filter((entry) => {
-      const key = `${entry.countryId.toString()}-${entry.sectorId.toString()}-${entry.year}`;
-      return !existingSet.has(key); // Insert only if not in existing records
+    // Filter only new emissions that do not exist
+    const newEntries = data.filter(({ countryId, sectorId, year }) => {
+      return !existingSet.has(`${countryId}-${sectorId}-${year}`);
     });
 
     if (newEntries.length === 0) {
@@ -103,7 +116,9 @@ export class EmissionsRepository {
     return await this.emissionModel.insertMany(newEntries);
   }
 
-  async getTrendsBySector(countryAlpha3: string) {
+  async getTrendsBySector(
+    countryAlpha3: string,
+  ): Promise<EmissionTrendDataResponseDto> {
     const country = await this.findCountryByAlpha3(countryAlpha3);
     if (!country) {
       throw new NotFoundException(`Country '${countryAlpha3}' not found`);
@@ -138,8 +153,11 @@ export class EmissionsRepository {
       .exec();
 
     return {
-      ts: new Date(),
-      country: { name: country.name, alpha3: country.alpha3 },
+      ts: new Date().toISOString(),
+      country: plainToInstance(CountryResponseDto, country, {
+        excludeExtraneousValues: true,
+      }),
+      filter: { countryAlpha3 },
       totalRecords: result[0]?.metadata[0]?.total || 0,
       data: result[0]?.data || [],
     };
@@ -150,7 +168,7 @@ export class EmissionsRepository {
     year?: number,
     limit: number = 10,
     page: number = 1,
-  ) {
+  ):Promise<PaginatedEmissionGasResponseDto> {
     const skip = (page - 1) * limit;
 
     // Validate and normalize gas type
@@ -213,25 +231,43 @@ export class EmissionsRepository {
     const totalDocuments = await this.emissionModel.countDocuments(filter);
 
     return {
-      ts: new Date(),
+      ts: new Date().toISOString(),
       gasType: normalizedGasType,
-      year: year ?? undefined,
+      filter:{year,gasType},
       total: totalDocuments,
       limit: Number(limit),
       page: Number(page),
       totalPages: Math.ceil(totalDocuments / limit),
-      data: emissions,
+      data: plainToInstance(EmissionGasRecordDto, emissions, {
+        excludeExtraneousValues: true,
+      })
     };
   }
   async findById(id: string) {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new NotFoundException('Invalid ID format'); // Handle invalid ObjectId
+    }
+
     const emission = await this.emissionModel
-      .findOne({ _id: id, deleted: false })
+      .findOne({ _id: new Types.ObjectId(id), deleted: false }) // Convert id to ObjectId
       .select('-deleted')
       .populate('countryId', 'name alpha3')
-      .populate('sectorId', 'name industry gasType seriesName seriesCode')
+      .populate('sectorId', 'industry gasType unit seriesName seriesCode')
       .exec();
 
-    return emission;
+    if (!emission) {
+      throw new NotFoundException('Emission not found'); // Better error handling
+    }
+
+    return {
+      _id: String(emission._id),
+      year: emission.year,
+      amount: emission.amount,
+      createdAt: emission.createdAt,
+      updatedAt: emission.updatedAt,
+      country: emission.countryId,
+      sector: emission.sectorId,
+    };
   }
 
   async findOne(
@@ -255,7 +291,7 @@ export class EmissionsRepository {
       })
       .select('-deleted')
       .populate('countryId', 'name alpha3')
-      .populate('sectorId', 'industry gasType seriesName seriesCode')
+      .populate('sectorId', 'industry gasType unit seriesName seriesCode')
       .exec();
   }
 
@@ -269,18 +305,31 @@ export class EmissionsRepository {
       .find({ deleted: false })
       .select('-deleted')
       .populate('countryId', 'name alpha3')
-      .populate('sectorId', 'name industry gasType seriesName seriesCode')
+      .populate('sectorId', 'name industry gasType unit seriesName seriesCode')
       .skip(skip)
       .limit(limit)
+      .lean()
       .exec();
 
+    const transformedEmissions = emissions.map((emission) => ({
+      _id: String(emission._id), // Keep the original ObjectId
+      year: emission.year,
+      amount: emission.amount,
+      createdAt: emission.createdAt,
+      updatedAt: emission.updatedAt,
+      country: emission.countryId, // Rename countryId → country
+      sector: emission.sectorId, // Rename sectorId → sector
+      countryId: undefined,
+      sectorId: undefined,
+    }));
+
     return {
-      ts: new Date(),
+      ts: new Date().toISOString(),
       total: totalDocuments,
       limit,
       page,
       totalPages: Math.ceil(totalDocuments / limit),
-      data: emissions,
+      data: transformedEmissions,
     };
   }
 
@@ -289,37 +338,59 @@ export class EmissionsRepository {
     year?: number,
     limit: number = 10,
     page: number = 1,
-  ) {
+  ): Promise<PaginatedEmissionResponseDto> {
     const skip = (page - 1) * limit;
-    const filter: any = { deleted: false, countryId: countryId };
+    const filter: any = { deleted: false };
 
+    if (countryId) {
+      filter.countryId = countryId;
+    }
     if (year) {
       filter.year = Number(year);
     }
 
-    const query = this.emissionModel
+    const totalDocuments = await this.emissionModel.countDocuments(filter);
+
+    const emissions = await this.emissionModel
       .find(filter)
       .select('-deleted')
       .populate('countryId', 'name alpha3')
-      .populate('sectorId', 'name industry gasType seriesName seriesCode')
+      .populate('sectorId', 'name industry gasType unit seriesName seriesCode')
       .skip(skip)
-      .limit(limit);
+      .limit(limit)
+      .lean() // Optimize performance by returning plain objects
+      .exec();
 
-    const totalDocuments = await this.emissionModel.countDocuments(filter);
-    const emissions = await query.exec();
+    // Rename fields properly
+    const transformedEmissions = emissions.map((emission) => ({
+      _id: String(emission._id), // Keep the original ObjectId
+      year: emission.year,
+      amount: emission.amount,
+      createdAt: emission.createdAt,
+      updatedAt: emission.updatedAt,
+      country: emission.countryId, // Rename countryId → country
+      sector: emission.sectorId, // Rename sectorId → sector
+      countryId: undefined,
+      sectorId: undefined,
+    }));
 
     return {
-      ts: new Date(),
-      ...(filter ?? undefined),
+      ts: new Date().toISOString(),
+      filter: { year: Number(year), countryId },
       total: totalDocuments,
       limit,
       page,
       totalPages: Math.ceil(totalDocuments / limit),
-      data: emissions,
+      data: plainToInstance(EmissionResponseDto, transformedEmissions, {
+        excludeExtraneousValues: true,
+      }),
     };
   }
 
-  async findBySector(countryAlpha3?: string, year?: number) {
+  async findBySector(
+    countryAlpha3?: string,
+    year?: number,
+  ): Promise<EmissionBySectorResponseDto> {
     let filter: any = {};
 
     if (countryAlpha3) {
@@ -381,21 +452,32 @@ export class EmissionsRepository {
       },
     ];
 
-    const groupedEmissions = await this.emissionModel
+    const groupedEmissions: EmissionBySector[] = await this.emissionModel
       .aggregate(aggregationPipeline)
       .exec();
 
+    const transformedEmissions = groupedEmissions.map((groupedEmission) => ({
+      totalEmissions: groupedEmission.totalEmissions,
+      year: groupedEmission.year,
+      count: groupedEmission.count,
+      sector: groupedEmission.sector,
+      country: groupedEmission.country,
+    }));
+
     return {
-      ts: new Date(),
-      ...(filter ?? undefined),
-      data: groupedEmissions,
+      ts: new Date().toISOString(),
+      filter,
+      data: plainToInstance(EmissionBySectorDataDto, transformedEmissions, {
+        excludeExtraneousValues: true,
+      }),
     };
   }
+
   async getEmissionsSummary(
     year: number,
     limit: number = 10,
     page: number = 1,
-  ) {
+  ): Promise<PaginatedEmissionBySummaryResponseDto> {
     const skip = (page - 1) * limit;
 
     const aggregationPipeline: PipelineStage[] = [
@@ -455,53 +537,40 @@ export class EmissionsRepository {
         },
       },
     ];
-    const result = await this.emissionModel
+    const results: EmissionSummary[] = await this.emissionModel
       .aggregate(aggregationPipeline)
       .exec();
+    const result = results[0];
+    const totalDocuments = result.metadata.total ?? 0;
 
-    const totalDocuments = result[0]?.metadata[0]?.total || 0;
-    const groupedEmissions = result[0]?.data || [];
+    const groupedEmissions = result.data;
+    const transformedEmissions = groupedEmissions.map((data) => ({
+      totalEmissions: data.totalEmissions,
+      sector: data.sector,
+      country: data.country,
+    }));
 
     return {
-      ts: new Date(),
-      year,
+      ts: new Date().toISOString(),
+      filter: { year },
       total: totalDocuments,
       limit,
       page,
       totalPages: Math.ceil(totalDocuments / limit),
-      data: groupedEmissions,
+      data: plainToInstance(EmissionBySummaryDataDto, transformedEmissions, {
+        excludeExtraneousValues: true,
+      }),
     };
   }
 
-  //Soft delete an emission record
-  async softDelete(id: string): Promise<any> {
-    return this.emissionModel.findByIdAndUpdate(id, { deleted: true }).exec();
-  }
-
-  //Restore soft-deleted emission record
-  async restore(id: string): Promise<any> {
-    const restoredEmission = await this.emissionModel
-      .findOneAndUpdate(
-        { _id: id, deleted: true },
-        { deleted: false },
-        { new: true },
-      )
-      .exec();
-
-    if (!restoredEmission) {
-      throw new NotFoundException(
-        `Emission record with ID '${id}' not found or not deleted.`,
-      );
-    }
-
-    return restoredEmission;
-  }
-
-  //Update an emission record
   async update(
     id: string,
     data: Partial<CreateEmissionDto>,
   ): Promise<Emission> {
+    if (!Object.keys(data).length) {
+      throw new BadRequestException('No update data provided.');
+    }
+
     const updatedEmission = await this.emissionModel
       .findOneAndUpdate({ _id: id, deleted: false }, data, { new: true })
       .select('-deleted')
@@ -512,5 +581,25 @@ export class EmissionsRepository {
     }
 
     return updatedEmission;
+  }
+
+  async softDelete(id: string) {
+    const emission = await this.emissionModel
+      .findOne({ _id: id, deleted: false })
+      .select('-deleted')
+      .exec();
+    if (!emission) {
+      throw new NotFoundException(`Emission with id '${id}' not found`);
+    }
+
+    if (emission.deleted) {
+      throw new BadRequestException(
+        `Emission with id '${id}' is already deleted`,
+      );
+    }
+
+    return this.emissionModel
+      .findOneAndUpdate({ _id: id }, { $set: { deleted: true } }, { new: true })
+      .exec();
   }
 }

@@ -33,11 +33,19 @@ import { RolesGuard } from 'src/auth/roles.guard';
 import { Roles } from 'src/auth/roles.decorator';
 import { Role } from 'src/auth/enums/role.enum';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import {
+  EmissionBySectorResponseDto,
+  EmissionResponseDto,
+  EmissionTrendDataResponseDto,
+  PaginatedEmissionBySummaryResponseDto,
+  PaginatedEmissionGasResponseDto,
+  PaginatedEmissionResponseDto,
+} from './dto/emission-response.dto';
 
 @ApiTags('Emissions')
 @ApiBearerAuth('JWT-auth')
-@Controller('emissions')
 @UseGuards(JwtAuthGuard, RolesGuard, ThrottlerGuard)
+@Controller('emissions')
 export class EmissionsController {
   constructor(
     private readonly emissionsService: EmissionsService,
@@ -66,12 +74,16 @@ export class EmissionsController {
   }
 
   @Get()
-  @Roles(Role.Admin,Role.User)
+  @Roles(Role.Admin, Role.User)
   @ApiOperation({
     summary:
       'Retrieve greenhouse gas emissions data for a speciﬁc country and year.',
   })
-  @ApiResponse({ status: 200, description: 'Successful response' })
+  @ApiResponse({
+    status: 200,
+    description: 'Emissions details retrieved successfully',
+    type: PaginatedEmissionResponseDto,
+  })
   @ApiQuery({
     name: 'country',
     required: false,
@@ -103,7 +115,7 @@ export class EmissionsController {
     @Query('year') year?: number,
     @Query('limit') limit?: number,
     @Query('page') page?: number,
-  ) {
+  ): Promise<PaginatedEmissionResponseDto> {
     if (country !== undefined && year !== undefined) {
       return this.emissionsService.findByCountryAndYear(
         country,
@@ -117,7 +129,7 @@ export class EmissionsController {
   }
 
   @Get('sector')
-  @Roles(Role.Admin,Role.User)
+  @Roles(Role.Admin, Role.User)
   @ApiOperation({
     summary:
       'Retrieve greenhouse gas emissions by sector for a country and year.',
@@ -138,25 +150,37 @@ export class EmissionsController {
   async getEmissionsBySector(
     @Query('country') country?: string,
     @Query('year') year?: number,
-  ) {
+  ): Promise<EmissionBySectorResponseDto> {
     return await this.emissionsService.findBySector(country, year);
   }
 
   @Get('trend')
-  @Roles(Role.Admin,Role.User)
+  @Roles(Role.Admin, Role.User)
   @ApiOperation({
     summary:
       'Retrieve greenhouse gas emissions trends over time for a country.',
   })
+  @ApiQuery({
+    name: 'country',
+    required: true,
+    type: String,
+    description: 'ISO 3166-1 alpha-3 country code (e.g., "USA")',
+  })
   @ApiResponse({ status: 200, description: 'Successful response' })
-  async getEmissionTrends(@Query('country') country: string) {
+  async getEmissionTrends(
+    @Query('country') country: string,
+  ): Promise<EmissionTrendDataResponseDto> {
+    const emissionTrends = await this.redis.get(`trend:${country}`);
+    if (emissionTrends) {
+      return JSON.parse(emissionTrends) as EmissionTrendDataResponseDto;
+    }
     const result = await this.emissionsService.getTrendsBySector(country);
     await this.redis.set(`trend:${country}`, JSON.stringify(result));
     return result;
   }
 
   @Get('filter')
-  @Roles(Role.Admin,Role.User)
+  @Roles(Role.Admin, Role.User)
   @ApiOperation({
     summary: 'Filter emissions by speciﬁc gases (e.g., CO₂, CH₄, N₂O).',
   })
@@ -192,12 +216,12 @@ export class EmissionsController {
     @Query('year') year?: number,
     @Query('limit') limit?: number,
     @Query('page') page?: number,
-  ) {
+  ): Promise<PaginatedEmissionGasResponseDto> {
     return await this.emissionsService.filterByGas(gas, year, limit, page);
   }
 
   @Get('summary')
-  @Roles(Role.Admin,Role.User)
+  @Roles(Role.Admin, Role.User)
   @ApiOperation({
     summary:
       ' Retrieve total emissions summary for a year (grouped by country and sector).',
@@ -209,29 +233,52 @@ export class EmissionsController {
     example: 2014,
     description: 'Year to retrieve emissions summary',
   })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'The number of results to return per page. Default is 10.',
+    example: 10,
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'The page number to retrieve. Starts from 1. Default is 1.',
+    example: 1,
+  })
   @ApiResponse({
     status: 200,
     description: 'Total emissions summary retrieved successfully',
   })
   @ApiResponse({ status: 400, description: 'Invalid year format' })
-  async getEmissionsSummary(@Query('year') year: number) {
+  async getEmissionsSummary(
+    @Query('year') year: number,
+    @Query('limit') limit?: number,
+    @Query('page') page?: number,
+  ): Promise<PaginatedEmissionBySummaryResponseDto> {
     if (!year || isNaN(Number(year))) {
       throw new NotFoundException(`Invalid year provided.`);
     }
 
-    return await this.emissionsService.getEmissionsSummary(Number(year));
+    return await this.emissionsService.getEmissionsSummary(
+      Number(year),
+      limit,
+      page,
+    );
   }
 
   @Get(':id')
-  @Roles(Role.Admin,Role.User)
+  @Roles(Role.Admin, Role.User)
   @ApiOperation({ summary: 'Retrieve an emission record by ID' })
   @ApiParam({ name: 'id', required: true, example: '65b1234abcde56789f012345' })
   @ApiResponse({
     status: 200,
     description: 'Emission record retrieved successfully',
+    type: EmissionResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Emission record not found' })
-  async getEmissionById(@Param('id') id: string) {
+  async getEmissionById(@Param('id') id: string): Promise<EmissionResponseDto> {
     const emission = await this.emissionsService.findById(id);
     if (!emission) {
       throw new NotFoundException(`Emission record with ID '${id}' not found`);

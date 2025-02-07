@@ -2,12 +2,14 @@ import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { LoginDTO } from './dto/login.dto';
+import { Public } from './public.decorator';
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
-
+  
+  @Public()
   @Post('login')
   @ApiOperation({ summary: 'User login and receive JWT token' })
   @ApiBody({

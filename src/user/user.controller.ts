@@ -20,6 +20,8 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 import { Role } from 'src/auth/enums/role.enum';
 import { Roles } from 'src/auth/roles.decorator';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { Public } from 'src/auth/public.decorator';
+import { UserResponseDto } from './dto/user-response.dto';
 
 @ApiTags('Users')
 @Controller('users')
@@ -27,6 +29,7 @@ import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
+  @Public()
   @Post('register')
   @ApiOperation({ summary: 'Register a new user' })
   @ApiResponse({
@@ -61,7 +64,7 @@ export class UserController {
     type: RegisterDTO,
     description: 'User registration details',
   })
-  async register(@Body() registerDTO: RegisterDTO) {
+  async register(@Body() registerDTO: RegisterDTO): Promise<UserResponseDto> {
     return this.userService.create(registerDTO);
   }
   
@@ -92,7 +95,7 @@ export class UserController {
       },
     },
   })
-  getProfile(@Request() req) {
+  getProfile(@Request() req)  {
     const user = this.userService.findByEmail(req.user.email);
     return user;
   }
