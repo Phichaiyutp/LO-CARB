@@ -26,9 +26,9 @@ Before proceeding, make sure you have the following installed:
    npm install
    ```
 5. Run 
-   '''sh
+   ```sh
    npm run start:dev
-   '''
+   ```
 
 ---
 
