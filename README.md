@@ -13,18 +13,22 @@ Before proceeding, make sure you have the following installed:
    ```sh
    npm install -g @nestjs/cli
    ```
-2. Create a new NestJS project:
+2. Clone NestJS project:
    ```sh
-   nest new my-nest-app
+   clone https://github.com/Phichaiyutp/LO-CARB.git
    ```
 3. Navigate to the project directory:
    ```sh
-   cd my-nest-app
+   cd LO-CARB
    ```
 4. Install dependencies:
    ```sh
    npm install
    ```
+5. Run 
+   '''sh
+   npm run start:dev
+   '''
 
 ---
 
